@@ -1508,22 +1508,17 @@ def create_clips_with_transitions(
         add_subtitles,
     )
 
-    if len(clips_info) < 2:
-        logger.info("Not enough clips to apply transitions")
-        return clips_info
-
-    # Get available transitions
-    transitions = get_available_transitions()
-    if not transitions:
-        logger.warning("No transition files found, returning clips without transitions")
-        return clips_info
+    # For now, prioritize raw clips as requested. Transitions will be implemented as an optional step later.
+    logger.info("Prioritizing raw clips, skipping transition processing for now")
+    return clips_info
 
     # Create clips with transitions
+    enhanced_clips = []
+    
+    # Create subfolder for transition clips as per specs
     transition_output_dir = output_dir / "with_transitions"
     transition_output_dir.mkdir(parents=True, exist_ok=True)
-
-    enhanced_clips = []
-
+    
     for i, clip_info in enumerate(clips_info):
         if i == 0:
             # First clip - no transition before
@@ -1536,7 +1531,7 @@ def create_clips_with_transitions(
             # Select transition (cycle through available transitions)
             transition_path = Path(transitions[i % len(transitions)])
 
-            # Create output path for clip with transition
+            # Create output path for clip with transition in subfolder
             transition_filename = f"transition_{i}_{clip_info['filename']}"
             transition_output_path = transition_output_dir / transition_filename
 
@@ -1550,7 +1545,8 @@ def create_clips_with_transitions(
             if success:
                 # Update clip info with transition version
                 enhanced_clip_info = clip_info.copy()
-                enhanced_clip_info["filename"] = transition_filename
+                # Store the relative path including subfolder in filename for correct API serving
+                enhanced_clip_info["filename"] = f"with_transitions/{transition_filename}"
                 enhanced_clip_info["path"] = str(transition_output_path)
                 enhanced_clip_info["has_transition"] = True
                 enhanced_clips.append(enhanced_clip_info)

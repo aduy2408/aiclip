@@ -223,6 +223,13 @@ class GeneratedClip(Base):
     )
     hook_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
+    # Auto-generated viral title fields
+    youtube_title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    title_alternatives: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # JSON string
+    hashtags: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

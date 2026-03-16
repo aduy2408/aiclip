@@ -242,6 +242,9 @@ class TaskService:
                     value_score=clip_info.get("value_score", 0),
                     shareability_score=clip_info.get("shareability_score", 0),
                     hook_type=clip_info.get("hook_type"),
+                    youtube_title=clip_info.get("youtube_title"),
+                    title_alternatives=clip_info.get("title_alternatives"),
+                    hashtags=clip_info.get("hashtags"),
                 )
                 clip_ids.append(clip_id)
 
@@ -503,6 +506,9 @@ class TaskService:
                 value_score=clip_info.get("value_score", 0),
                 shareability_score=clip_info.get("shareability_score", 0),
                 hook_type=clip_info.get("hook_type"),
+                youtube_title=clip_info.get("youtube_title"),
+                title_alternatives=clip_info.get("title_alternatives"),
+                hashtags=clip_info.get("hashtags"),
             )
             clip_ids.append(clip_id)
 
@@ -595,6 +601,9 @@ class TaskService:
             value_score=clip.get("value_score", 0),
             shareability_score=clip.get("shareability_score", 0),
             hook_type=clip.get("hook_type"),
+            youtube_title=clip.get("youtube_title"),
+            title_alternatives=clip.get("title_alternatives"),
+            hashtags=clip.get("hashtags"),
         )
 
         await self.clip_repo.reorder_task_clips(self.db, task_id)

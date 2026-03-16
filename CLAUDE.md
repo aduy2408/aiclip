@@ -24,16 +24,49 @@ Services: Frontend (:3000), Backend API (:8000, docs at /docs), Worker (ARQ), Po
 
 Uses `uv` (not pip/poetry). Requires Python 3.11+, ffmpeg, running PostgreSQL and Redis.
 
+**🚀 Quick Start (Windows Only)**
+Run this script to open all 3 services (API, Worker, Frontend) in separate terminal windows:
+```powershell
+./start.ps1
+```
+
+**Option A: Linux / macOS (Bash/Zsh)**
 ```bash
 cd backend
-uv venv .venv && source .venv/bin/activate
+uv venv .venv
+source .venv/bin/activate
 uv sync
 
-# API server (uses refactored entry point)
+# API server
 uvicorn src.main_refactored:app --reload --host 0.0.0.0 --port 8000
 
-# Worker process (required for video processing)
+# Worker process (in a separate terminal)
+source .venv/bin/activate
 arq src.workers.tasks.WorkerSettings
+```
+
+**Option B: Windows (PowerShell)**
+```powershell
+cd backend
+uv venv .venv
+.\.venv\Scripts\Activate.ps1
+uv sync
+
+# API server
+uvicorn src.main_refactored:app --reload --host 0.0.0.0 --port 8000
+
+# Worker process (in a separate terminal)
+.\.venv\Scripts\Activate.ps1
+arq src.workers.tasks.WorkerSettings
+```
+
+**Option C: Simpler method (Any OS)**
+```bash
+cd backend
+uv sync
+uv run uvicorn src.main_refactored:app --reload --host 0.0.0.0 --port 8000
+# Worker (separate terminal)
+uv run arq src.workers.tasks.WorkerSettings
 ```
 
 ### Frontend (local)

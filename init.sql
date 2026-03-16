@@ -94,9 +94,19 @@ CREATE TABLE generated_clips (
     shareability_score INTEGER DEFAULT 0,
     hook_type VARCHAR(50),
 
+    -- Auto-generated viral title
+    youtube_title TEXT,
+    title_alternatives TEXT,
+    hashtags TEXT,
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Migration: add viral title columns to existing databases
+ALTER TABLE generated_clips ADD COLUMN IF NOT EXISTS youtube_title TEXT;
+ALTER TABLE generated_clips ADD COLUMN IF NOT EXISTS title_alternatives TEXT;
+ALTER TABLE generated_clips ADD COLUMN IF NOT EXISTS hashtags TEXT;
 
 CREATE TABLE processing_cache (
     cache_key VARCHAR(255) PRIMARY KEY,
