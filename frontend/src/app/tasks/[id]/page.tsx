@@ -68,6 +68,7 @@ interface Clip {
   value_score: number;
   shareability_score: number;
   hook_type: string | null;
+  youtube_title?: string;
 }
 
 interface TaskDetails {
@@ -973,7 +974,9 @@ export default function TaskPage() {
                             />
                             Select for merge
                           </label>
-                          <h3 className="font-semibold text-lg text-black mb-1">Clip {clip.clip_order}</h3>
+                          <h3 className="font-semibold text-lg text-black mb-1">
+                            {clip.youtube_title || `Clip ${clip.clip_order}`}
+                          </h3>
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <span>
                               {clip.start_time} - {clip.end_time}

@@ -68,11 +68,11 @@ def _sanitize_title_for_filename(title: str) -> str:
     title = re.sub(r"[^a-z0-9 \-]", "", title)
     # Collapse multiple spaces/hyphens
     title = re.sub(r"[\s]+", " ", title).strip()
-    title = title.replace(" ", "_")
-    title = title.strip("_")
+    sanitized = title.strip()
+
     # Truncate to 80 chars
-    title = title[:80].rstrip("_")
-    return title
+    sanitized = sanitized[:80].strip()
+    return sanitized
 
 
 class VideoService:

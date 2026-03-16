@@ -1147,17 +1147,7 @@ def create_fade_subtitles(
                 )
 
                 # Apply fade to background
-                fade_duration = min(0.2, group_duration / 4)
-                bg_clip = (
-                    bg_clip.with_effects(
-                        [
-                            lambda clip: clip.crossfadein(fade_duration),
-                            lambda clip: clip.crossfadeout(fade_duration),
-                        ]
-                    )
-                    if group_duration > 0.5
-                    else bg_clip
-                )
+                pass  # fade effects not supported in MoviePy v2 with lambda
 
                 subtitle_clips.append(bg_clip)
 
