@@ -89,15 +89,15 @@ def get_video_transcript(video_path: Path, speech_model: str = "best") -> str:
     transcriber = aai.Transcriber()
 
     # Request word-level timestamps for precise subtitle sync
-    speech_model_value = aai.SpeechModel.best
+    speech_model_value = "universal-3-pro"
     if speech_model == "nano":
-        speech_model_value = aai.SpeechModel.nano
+        speech_model_value = "universal-2"
 
     config_obj = aai.TranscriptionConfig(
         speaker_labels=False,
         punctuate=True,
         format_text=True,
-        speech_model=speech_model_value,
+        speech_models=[speech_model_value],
     )
 
     try:
@@ -358,6 +358,74 @@ def detect_optimal_crop_region(
         return (x_offset, y_offset, new_width, new_height)
 
 
+def _get_mediapipe_model_path() -> str:
+    """Download MediaPipe face detection model if it doesn't exist."""
+    import urllib.request
+    import os
+    
+    # Store in a models directory alongside video_utils.py
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_dir = os.path.join(current_dir, "..", "models")
+    os.makedirs(model_dir, exist_ok=True)
+    
+    model_path = os.path.join(model_dir, "blaze_face_short_range.tflite")
+    
+    if not os.path.exists(model_path):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("Downloading MediaPipe face detection model...")
+        try:
+            urllib.request.urlretrieve(
+                "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+                model_path
+            )
+        except Exception as e:
+            logger.error(f"Failed to download MediaPipe model: {e}")
+            return ""
+            
+    return model_path
+
+
+def _get_opencv_dnn_model_paths() -> Tuple[str, str]:
+    """Download OpenCV DNN face detection models if they don't exist."""
+    import urllib.request
+    import os
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    model_dir = os.path.join(current_dir, "..", "models")
+    os.makedirs(model_dir, exist_ok=True)
+    
+    prototxt_path = os.path.join(model_dir, "deploy.prototxt")
+    model_path = os.path.join(model_dir, "res10_300x300_ssd_iter_140000_fp16.caffemodel")
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if not os.path.exists(prototxt_path):
+        logger.info("Downloading OpenCV DNN face detection prototxt...")
+        try:
+            urllib.request.urlretrieve(
+                "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
+                prototxt_path
+            )
+        except Exception as e:
+            logger.error(f"Failed to download prototxt: {e}")
+            return "", ""
+            
+    if not os.path.exists(model_path):
+        logger.info("Downloading OpenCV DNN face detection model...")
+        try:
+            urllib.request.urlretrieve(
+                "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20180205_fp16/res10_300x300_ssd_iter_140000_fp16.caffemodel",
+                model_path
+            )
+        except Exception as e:
+            logger.error(f"Failed to download model: {e}")
+            return "", ""
+            
+    return prototxt_path, model_path
+
+
 def detect_faces_in_clip(
     video_clip: VideoFileClip, start_time: float, end_time: float
 ) -> List[Tuple[int, int, int, float]]:
@@ -369,15 +437,21 @@ def detect_faces_in_clip(
 
     try:
         # Try to use MediaPipe (most accurate)
-        mp_face_detection = None
+        mp_face_detector = None
         try:
             import mediapipe as mp
-
-            mp_face_detection = mp.solutions.face_detection.FaceDetection(
-                model_selection=0,  # 0 for short-range (better for close faces)
-                min_detection_confidence=0.5,
-            )
-            logger.info("Using MediaPipe face detector")
+            
+            model_path = _get_mediapipe_model_path()
+            if model_path:
+                options = mp.tasks.vision.FaceDetectorOptions(
+                    base_options=mp.tasks.BaseOptions(model_asset_path=model_path),
+                    running_mode=mp.tasks.vision.RunningMode.IMAGE,
+                    min_detection_confidence=0.5
+                )
+                mp_face_detector = mp.tasks.vision.FaceDetector.create_from_options(options)
+                logger.info("Using MediaPipe Tasks face detector")
+            else:
+                logger.warning("MediaPipe model not available")
         except ImportError:
             logger.info("MediaPipe not available, falling back to OpenCV")
         except Exception as e:
@@ -391,24 +465,15 @@ def detect_faces_in_clip(
         # Try to load DNN face detector (more accurate than Haar)
         dnn_net = None
         try:
-            # Load OpenCV's DNN face detector
-            prototxt_path = cv2.data.haarcascades.replace(
-                "haarcascades", "opencv_face_detector.pbtxt"
-            )
-            model_path = cv2.data.haarcascades.replace(
-                "haarcascades", "opencv_face_detector_uint8.pb"
-            )
+            prototxt_path, model_path = _get_opencv_dnn_model_paths()
 
-            # If DNN model files don't exist, we'll fall back to Haar cascade
-            import os
-
-            if os.path.exists(prototxt_path) and os.path.exists(model_path):
-                dnn_net = cv2.dnn.readNetFromTensorflow(model_path, prototxt_path)
+            if prototxt_path and model_path and os.path.exists(prototxt_path) and os.path.exists(model_path):
+                dnn_net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
                 logger.info("OpenCV DNN face detector loaded as backup")
             else:
-                logger.info("OpenCV DNN face detector not available")
-        except Exception:
-            logger.info("OpenCV DNN face detector failed to load")
+                logger.warning("OpenCV DNN face detector not available (models missing)")
+        except Exception as e:
+            logger.warning(f"OpenCV DNN face detector failed to load: {e}")
 
         # Sample more frames for better face detection (every 0.5 seconds)
         duration = end_time - start_time
@@ -436,21 +501,24 @@ def detect_faces_in_clip(
                 detected_faces = []
 
                 # Try MediaPipe first (most accurate)
-                if mp_face_detection is not None:
+                if mp_face_detector is not None:
                     try:
-                        # MediaPipe expects RGB format
-                        results = mp_face_detection.process(frame)
+                        import mediapipe as mp
+                        
+                        # MediaPipe Tasks expects mp.Image
+                        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+                        results = mp_face_detector.detect(mp_image)
 
                         if results.detections:
                             for detection in results.detections:
-                                bbox = detection.location_data.relative_bounding_box
-                                confidence = detection.score[0]
+                                bbox = detection.bounding_box
+                                confidence = detection.categories[0].score
 
-                                # Convert relative coordinates to absolute
-                                x = int(bbox.xmin * width)
-                                y = int(bbox.ymin * height)
-                                w = int(bbox.width * width)
-                                h = int(bbox.height * height)
+                                # Bounding box is already absolute in pixels
+                                x = int(bbox.origin_x)
+                                y = int(bbox.origin_y)
+                                w = int(bbox.width)
+                                h = int(bbox.height)
 
                                 if w > 30 and h > 30:  # Minimum face size
                                     detected_faces.append((x, y, w, h, confidence))
@@ -462,9 +530,8 @@ def detect_faces_in_clip(
                 # If MediaPipe didn't find faces, try DNN detector
                 if not detected_faces and dnn_net is not None:
                     try:
-                        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                         blob = cv2.dnn.blobFromImage(
-                            frame_bgr, 1.0, (300, 300), [104, 117, 123]
+                            cv2.resize(frame, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0)
                         )
                         dnn_net.setInput(blob)
                         detections = dnn_net.forward()
@@ -539,8 +606,8 @@ def detect_faces_in_clip(
                 continue
 
         # Close MediaPipe detector
-        if mp_face_detection is not None:
-            mp_face_detection.close()
+        if mp_face_detector is not None:
+            mp_face_detector.close()
 
         # Remove outliers (faces that are very far from the median position)
         if len(face_centers) > 2:
@@ -1188,7 +1255,6 @@ def create_optimized_clip(
             )
             target_width, target_height = round_to_even(new_width), round_to_even(new_height)
             processed_clip = cropped_clip
->>>>>>> 70946ce (Subtitle speed up)
 
         # Add AssemblyAI subtitles with template support
         final_clips = [processed_clip]
@@ -1350,12 +1416,20 @@ def apply_transition_effect(
 ) -> bool:
     """Apply transition effect between two clips using a transition video."""
     try:
-        from moviepy import VideoFileClip, CompositeVideoClip, concatenate_videoclips
+        from moviepy import VideoFileClip, concatenate_videoclips
+        from moviepy.video.fx import FadeIn, FadeOut
 
         # Load clips
         clip1 = VideoFileClip(str(clip1_path))
         clip2 = VideoFileClip(str(clip2_path))
-        transition = VideoFileClip(str(transition_path))
+        
+        try:
+            transition = VideoFileClip(str(transition_path))
+        except Exception as e:
+            logger.error(f"Cannot read transition file {transition_path}: {e}")
+            clip1.close()
+            clip2.close()
+            return False
 
         # Ensure transition duration is reasonable (max 1.5 seconds)
         transition_duration = min(1.5, transition.duration)
@@ -1369,10 +1443,10 @@ def apply_transition_effect(
         fade_duration = 0.5  # Half second fade
 
         # Fade out clip1
-        clip1_faded = clip1.with_effects(["fadeout", fade_duration])
+        clip1_faded = clip1.with_effects([FadeOut(fade_duration)])
 
         # Fade in clip2
-        clip2_faded = clip2.with_effects(["fadein", fade_duration])
+        clip2_faded = clip2.with_effects([FadeIn(fade_duration)])
 
         # Combine: clip1 -> transition -> clip2
         final_clip = concatenate_videoclips(

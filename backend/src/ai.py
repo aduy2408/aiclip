@@ -199,7 +199,7 @@ def get_transcript_agent() -> Agent[None, TranscriptAnalysis]:
 
         _transcript_agent = Agent[None, TranscriptAnalysis](
             model=config.llm,
-            result_type=TranscriptAnalysis,
+            output_type=TranscriptAnalysis,
             system_prompt=simplified_system_prompt,
         )
     return _transcript_agent
@@ -230,7 +230,7 @@ Transcript:
 {transcript}"""
         )
 
-        analysis = result.data
+        analysis = result.output
         logger.info(
             f"AI analysis found {len(analysis.most_relevant_segments)} segments"
         )
