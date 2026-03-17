@@ -28,24 +28,41 @@ config = Config()
 UPLOAD_URL_PREFIX = "upload://"
 
 # Title generation prompt template
-_TITLE_PROMPT_TEMPLATE = """You are a viral YouTube Shorts title expert.
+_TITLE_PROMPT_TEMPLATE = """You are a viral YouTube Shorts title writer who specializes in brainrot, Gen Z, and trending content.
 Transcript: "{text}"
 
 Return ONLY raw JSON, no markdown, no explanation:
 {{
-  "title": "max 60 chars, lowercase, curiosity gap, no cringe words",
-  "alternatives": ["option 2", "option 3"],
-  "hashtags": ["#shorts", "#fyp", "3 more relevant tags"]
+  "title": "max 60 chars, Gen Z brainrot style, high psychological trigger",
+  "alternatives": ["Alternative title 1", "Alternative title 2"],
+  "hashtags": ["#shorts", "#fyp", "3-4 niche relevant tags"]
 }}
 
-Rules: lowercase, max 60 chars, front-load the hook, 1 emoji max at end.
-Never use: amazing/incredible/life-changing/game-changer.
-Use formats like:
-- "pov: you [relatable moment]"
-- "nobody talks about [truth]"
-- "this is why you're [problem] 💀"
-- "stop [behavior] if you want [outcome]"
-- "i wish someone told me this sooner"
+TITLE RULES:
+- Max 60 chars, capitalize first letter only
+- 0-2 emojis max (use sparingly, only if it adds impact)
+- Front-load the most shocking/relatable part
+- NO periods at the end
+- NO generic words: amazing/incredible/life-changing/insane/crazy/unbelievable
+
+PSYCHOLOGICAL TRIGGERS (pick the strongest one):
+- Curiosity gap: "nobody tells you that..."  "the real reason why..."
+- Identity/POV: "pov: you finally..."  "when you realize..."
+- Fear/urgency: "stop doing this before..."  "you're losing money by..."
+- Shocking truth: "they lied about..."  "this is actually illegal"
+- Social proof: "why everyone is switching to..."
+
+TRENDING FORMATS (2025 brainrot shorts):
+- "bro really said [quote] 💀"
+- "the way [person] [action] no cap"
+- "POV: [extremely relatable situation]"
+- "they actually [surprising action] fr"
+- "why does [common thing] hit different"
+- "this [thing] is actually [unexpected truth]"
+- "nobody: / absolutely nobody: / [subject]: [unexpected action]"
+- "i can't believe [subject] actually [action]"
+- "the [item/person] said [quote] and walked away"
+- "[number] seconds that changed everything"
 """
 
 
@@ -384,6 +401,7 @@ class VideoService:
             segments_json: List[Dict[str, Any]] = []
             for segment in raw_segments:
                 if isinstance(segment, dict):
+                    virality = segment.get("virality") or {}
                     segments_json.append(
                         {
                             "start_time": segment.get("start_time"),
@@ -391,9 +409,31 @@ class VideoService:
                             "text": segment.get("text", ""),
                             "relevance_score": segment.get("relevance_score", 0.0),
                             "reasoning": segment.get("reasoning", ""),
+                            "virality_score": virality.get("total_score", 0)
+                            if isinstance(virality, dict)
+                            else 0,
+                            "hook_score": virality.get("hook_score", 0)
+                            if isinstance(virality, dict)
+                            else 0,
+                            "engagement_score": virality.get("engagement_score", 0)
+                            if isinstance(virality, dict)
+                            else 0,
+                            "value_score": virality.get("value_score", 0)
+                            if isinstance(virality, dict)
+                            else 0,
+                            "shareability_score": virality.get("shareability_score", 0)
+                            if isinstance(virality, dict)
+                            else 0,
+                            "hook_type": virality.get("hook_type")
+                            if isinstance(virality, dict)
+                            else None,
+                            "bgm_mood": virality.get("bgm_mood")
+                            if isinstance(virality, dict)
+                            else None,
                         }
                     )
                 else:
+                    virality = segment.virality
                     segments_json.append(
                         {
                             "start_time": segment.start_time,
@@ -401,6 +441,17 @@ class VideoService:
                             "text": segment.text,
                             "relevance_score": segment.relevance_score,
                             "reasoning": segment.reasoning,
+                            "virality_score": virality.total_score if virality else 0,
+                            "hook_score": virality.hook_score if virality else 0,
+                            "engagement_score": virality.engagement_score
+                            if virality
+                            else 0,
+                            "value_score": virality.value_score if virality else 0,
+                            "shareability_score": virality.shareability_score
+                            if virality
+                            else 0,
+                            "hook_type": virality.hook_type if virality else None,
+                            "bgm_mood": virality.bgm_mood if virality else None,
                         }
                     )
 

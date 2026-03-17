@@ -468,6 +468,7 @@ class TaskService:
                 "value_score": clip.get("value_score", 0),
                 "shareability_score": clip.get("shareability_score", 0),
                 "hook_type": clip.get("hook_type"),
+                "bgm_mood": clip.get("bgm_mood"),
             }
             for clip in clips
         ]

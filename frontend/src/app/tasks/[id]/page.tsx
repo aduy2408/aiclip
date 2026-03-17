@@ -69,6 +69,8 @@ interface Clip {
   shareability_score: number;
   hook_type: string | null;
   youtube_title?: string;
+  title_alternatives?: string;
+  hashtags?: string;
 }
 
 interface TaskDetails {
@@ -984,19 +986,58 @@ export default function TaskPage() {
                             <span>•</span>
                             <span>{formatDuration(clip.duration)}</span>
                           </div>
+
+                          {/* Alternative Titles */}
+                          {clip.title_alternatives && (() => {
+                            try {
+                              const parsed = JSON.parse(clip.title_alternatives);
+                              if (!Array.isArray(parsed) || parsed.length === 0) return null;
+                              return (
+                                <div className="mt-3 mb-2">
+                                  <p className="text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Alternative Titles</p>
+                                  <div className="flex flex-col gap-1">
+                                    {parsed.map((alt, idx) => (
+                                      <p key={idx} className="text-sm text-gray-700 italic border-l-2 border-gray-200 pl-2">
+                                        "{alt}"
+                                      </p>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            } catch (e) { return null; }
+                          })()}
+
+                          {/* Hashtags */}
+                          {clip.hashtags && (() => {
+                            try {
+                              const parsed = JSON.parse(clip.hashtags);
+                              if (!Array.isArray(parsed) || parsed.length === 0) return null;
+                              return (
+                                <div className="mt-2 mb-2 flex flex-wrap gap-1">
+                                  {parsed.map((tag, idx) => (
+                                    <span key={idx} className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                                      {tag.startsWith('#') ? tag : `#${tag}`}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            } catch (e) { return null; }
+                          })()}
                         </div>
-                        <div className="flex items-center gap-2">
-                          {/* Virality Score Badge */}
-                          {clip.virality_score > 0 && (
-                            <Badge className={`${getViralityBgColor(clip.virality_score)} text-white`}>
-                              <Zap className="w-3 h-3 mr-1" />
-                              {clip.virality_score}
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center gap-2">
+                            {/* Virality Score Badge */}
+                            {clip.virality_score > 0 && (
+                              <Badge className={`${getViralityBgColor(clip.virality_score)} text-white`}>
+                                <Zap className="w-3 h-3 mr-1" />
+                                {clip.virality_score}
+                              </Badge>
+                            )}
+                            <Badge className={getScoreColor(clip.relevance_score)}>
+                              <Star className="w-3 h-3 mr-1" />
+                              {(clip.relevance_score * 100).toFixed(0)}%
                             </Badge>
-                          )}
-                          <Badge className={getScoreColor(clip.relevance_score)}>
-                            <Star className="w-3 h-3 mr-1" />
-                            {(clip.relevance_score * 100).toFixed(0)}%
-                          </Badge>
+                          </div>
                         </div>
                       </div>
 

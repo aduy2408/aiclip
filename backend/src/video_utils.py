@@ -13,6 +13,8 @@ import json
 
 import cv2
 from moviepy import VideoFileClip, CompositeVideoClip, TextClip, ColorClip
+from moviepy import AudioFileClip, CompositeAudioClip
+from moviepy.audio.fx import MultiplyVolume
 
 import assemblyai as aai
 import srt
@@ -362,27 +364,28 @@ def _get_mediapipe_model_path() -> str:
     """Download MediaPipe face detection model if it doesn't exist."""
     import urllib.request
     import os
-    
+
     # Store in a models directory alongside video_utils.py
     current_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(current_dir, "..", "models")
     os.makedirs(model_dir, exist_ok=True)
-    
+
     model_path = os.path.join(model_dir, "blaze_face_short_range.tflite")
-    
+
     if not os.path.exists(model_path):
         import logging
+
         logger = logging.getLogger(__name__)
         logger.info("Downloading MediaPipe face detection model...")
         try:
             urllib.request.urlretrieve(
                 "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
-                model_path
+                model_path,
             )
         except Exception as e:
             logger.error(f"Failed to download MediaPipe model: {e}")
             return ""
-            
+
     return model_path
 
 
@@ -390,39 +393,42 @@ def _get_opencv_dnn_model_paths() -> Tuple[str, str]:
     """Download OpenCV DNN face detection models if they don't exist."""
     import urllib.request
     import os
-    
+
     current_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(current_dir, "..", "models")
     os.makedirs(model_dir, exist_ok=True)
-    
+
     prototxt_path = os.path.join(model_dir, "deploy.prototxt")
-    model_path = os.path.join(model_dir, "res10_300x300_ssd_iter_140000_fp16.caffemodel")
-    
+    model_path = os.path.join(
+        model_dir, "res10_300x300_ssd_iter_140000_fp16.caffemodel"
+    )
+
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     if not os.path.exists(prototxt_path):
         logger.info("Downloading OpenCV DNN face detection prototxt...")
         try:
             urllib.request.urlretrieve(
                 "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt",
-                prototxt_path
+                prototxt_path,
             )
         except Exception as e:
             logger.error(f"Failed to download prototxt: {e}")
             return "", ""
-            
+
     if not os.path.exists(model_path):
         logger.info("Downloading OpenCV DNN face detection model...")
         try:
             urllib.request.urlretrieve(
                 "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20180205_fp16/res10_300x300_ssd_iter_140000_fp16.caffemodel",
-                model_path
+                model_path,
             )
         except Exception as e:
             logger.error(f"Failed to download model: {e}")
             return "", ""
-            
+
     return prototxt_path, model_path
 
 
@@ -440,15 +446,17 @@ def detect_faces_in_clip(
         mp_face_detector = None
         try:
             import mediapipe as mp
-            
+
             model_path = _get_mediapipe_model_path()
             if model_path:
                 options = mp.tasks.vision.FaceDetectorOptions(
                     base_options=mp.tasks.BaseOptions(model_asset_path=model_path),
                     running_mode=mp.tasks.vision.RunningMode.IMAGE,
-                    min_detection_confidence=0.5
+                    min_detection_confidence=0.5,
                 )
-                mp_face_detector = mp.tasks.vision.FaceDetector.create_from_options(options)
+                mp_face_detector = mp.tasks.vision.FaceDetector.create_from_options(
+                    options
+                )
                 logger.info("Using MediaPipe Tasks face detector")
             else:
                 logger.warning("MediaPipe model not available")
@@ -467,11 +475,18 @@ def detect_faces_in_clip(
         try:
             prototxt_path, model_path = _get_opencv_dnn_model_paths()
 
-            if prototxt_path and model_path and os.path.exists(prototxt_path) and os.path.exists(model_path):
+            if (
+                prototxt_path
+                and model_path
+                and os.path.exists(prototxt_path)
+                and os.path.exists(model_path)
+            ):
                 dnn_net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
                 logger.info("OpenCV DNN face detector loaded as backup")
             else:
-                logger.warning("OpenCV DNN face detector not available (models missing)")
+                logger.warning(
+                    "OpenCV DNN face detector not available (models missing)"
+                )
         except Exception as e:
             logger.warning(f"OpenCV DNN face detector failed to load: {e}")
 
@@ -504,9 +519,11 @@ def detect_faces_in_clip(
                 if mp_face_detector is not None:
                     try:
                         import mediapipe as mp
-                        
+
                         # MediaPipe Tasks expects mp.Image
-                        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+                        mp_image = mp.Image(
+                            image_format=mp.ImageFormat.SRGB, data=frame
+                        )
                         results = mp_face_detector.detect(mp_image)
 
                         if results.detections:
@@ -531,7 +548,10 @@ def detect_faces_in_clip(
                 if not detected_faces and dnn_net is not None:
                     try:
                         blob = cv2.dnn.blobFromImage(
-                            cv2.resize(frame, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0)
+                            cv2.resize(frame, (300, 300)),
+                            1.0,
+                            (300, 300),
+                            (104.0, 177.0, 123.0),
                         )
                         dnn_net.setInput(blob)
                         detections = dnn_net.forward()
@@ -1165,6 +1185,25 @@ def create_fade_subtitles(
     return subtitle_clips
 
 
+def get_random_bgm(mood: str) -> Optional[Path]:
+    """Return a random .mp3 file from backend/bgm/{mood}/ or None if unavailable."""
+    import random
+
+    bgm_dir = Path(__file__).parent.parent / "bgm" / mood
+    if not bgm_dir.exists():
+        logger.debug(f"BGM directory not found: {bgm_dir}")
+        return None
+
+    mp3_files = list(bgm_dir.glob("*.mp3"))
+    if not mp3_files:
+        logger.debug(f"No .mp3 files in BGM directory: {bgm_dir}")
+        return None
+
+    chosen = random.choice(mp3_files)
+    logger.info(f"Selected BGM file: {chosen} for mood '{mood}'")
+    return chosen
+
+
 def create_optimized_clip(
     video_path: Path,
     start_time: float,
@@ -1176,8 +1215,9 @@ def create_optimized_clip(
     font_color: str = "#FFFFFF",
     caption_template: str = "default",
     output_format: str = "vertical",
+    bgm_mood: Optional[str] = None,
 ) -> bool:
-    """Create clip with optional subtitles. output_format: 'vertical' (9:16) or 'original' (keep source size)."""
+    """Create clip with optional subtitles and BGM. output_format: 'vertical' (9:16) or 'original' (keep source size)."""
     try:
         duration = end_time - start_time
         if duration <= 0:
@@ -1187,21 +1227,29 @@ def create_optimized_clip(
         keep_original = output_format == "original"
         logger.info(
             f"Creating clip: {start_time:.1f}s - {end_time:.1f}s ({duration:.1f}s) "
-            f"subtitles={add_subtitles} template '{caption_template}' format={'original' if keep_original else 'vertical'}"
+            f"subtitles={add_subtitles} template '{caption_template}' format={'original' if keep_original else 'vertical'} bgm_mood={bgm_mood}"
         )
 
         # Fast path: no subtitles + original = ffmpeg stream copy (no re-encoding)
-        if not add_subtitles and keep_original:
+        # BGM requires re-encoding, so skip fast path when BGM is requested
+        bgm_path = get_random_bgm(bgm_mood) if bgm_mood else None
+        if not add_subtitles and keep_original and not bgm_path:
             import subprocess
+
             result = subprocess.run(
                 [
                     "ffmpeg",
                     "-y",
-                    "-ss", str(start_time),
-                    "-i", str(video_path),
-                    "-t", str(duration),
-                    "-c", "copy",
-                    "-movflags", "+faststart",
+                    "-ss",
+                    str(start_time),
+                    "-i",
+                    str(video_path),
+                    "-t",
+                    str(duration),
+                    "-c",
+                    "copy",
+                    "-movflags",
+                    "+faststart",
                     str(output_path),
                 ],
                 capture_output=True,
@@ -1241,9 +1289,15 @@ def create_optimized_clip(
                 video, start_time, end_time, target_ratio=9 / 16
             )
             cropped_clip = clip.cropped(
-                x1=x_offset, y1=y_offset, x2=x_offset + new_width, y2=y_offset + new_height
+                x1=x_offset,
+                y1=y_offset,
+                x2=x_offset + new_width,
+                y2=y_offset + new_height,
             )
-            target_width, target_height = round_to_even(new_width), round_to_even(new_height)
+            target_width, target_height = (
+                round_to_even(new_width),
+                round_to_even(new_height),
+            )
             processed_clip = cropped_clip
 
         # Add AssemblyAI subtitles with template support
@@ -1267,6 +1321,31 @@ def create_optimized_clip(
         final_clip = (
             CompositeVideoClip(final_clips) if len(final_clips) > 1 else processed_clip
         )
+
+        # Mix in BGM if available
+        bgm_audio_clip = None
+        if bgm_path:
+            try:
+                clip_duration = end_time - start_time
+                bgm_audio_clip = AudioFileClip(str(bgm_path)).with_duration(
+                    clip_duration
+                )
+                bgm_quiet = bgm_audio_clip.with_effects([MultiplyVolume(0.15)])
+                original_audio = final_clip.audio
+                if original_audio is not None:
+                    mixed_audio = CompositeAudioClip([original_audio, bgm_quiet])
+                else:
+                    mixed_audio = bgm_quiet
+                final_clip = final_clip.with_audio(mixed_audio)
+                logger.info(
+                    f"Mixed BGM '{bgm_path.name}' at 15% volume for mood '{bgm_mood}'"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to mix BGM audio (skipping): {e}")
+                if bgm_audio_clip is not None:
+                    bgm_audio_clip.close()
+                    bgm_audio_clip = None
+
         source_fps = clip.fps if clip.fps and clip.fps > 0 else 30
 
         processor = VideoProcessor(font_family, font_size, font_color)
@@ -1282,6 +1361,8 @@ def create_optimized_clip(
         )
 
         # Cleanup
+        if bgm_audio_clip is not None:
+            bgm_audio_clip.close()
         if final_clip is not processed_clip:
             final_clip.close()
         if processed_clip is not cropped_clip:
@@ -1353,6 +1434,7 @@ def create_clips_from_segments(
                 font_color,
                 caption_template,
                 output_format,
+                bgm_mood=segment.get("bgm_mood"),
             )
 
             if success:
@@ -1373,6 +1455,7 @@ def create_clips_from_segments(
                     "value_score": segment.get("value_score", 0),
                     "shareability_score": segment.get("shareability_score", 0),
                     "hook_type": segment.get("hook_type"),
+                    "bgm_mood": segment.get("bgm_mood"),
                 }
                 clips_info.append(clip_info)
                 logger.info(f"Created clip {i + 1}: {duration:.1f}s")
@@ -1412,7 +1495,7 @@ def apply_transition_effect(
         # Load clips
         clip1 = VideoFileClip(str(clip1_path))
         clip2 = VideoFileClip(str(clip2_path))
-        
+
         try:
             transition = VideoFileClip(str(transition_path))
         except Exception as e:
@@ -1504,11 +1587,11 @@ def create_clips_with_transitions(
 
     # Create clips with transitions
     enhanced_clips = []
-    
+
     # Create subfolder for transition clips as per specs
     transition_output_dir = output_dir / "with_transitions"
     transition_output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     for i, clip_info in enumerate(clips_info):
         if i == 0:
             # First clip - no transition before
@@ -1536,7 +1619,9 @@ def create_clips_with_transitions(
                 # Update clip info with transition version
                 enhanced_clip_info = clip_info.copy()
                 # Store the relative path including subfolder in filename for correct API serving
-                enhanced_clip_info["filename"] = f"with_transitions/{transition_filename}"
+                enhanced_clip_info["filename"] = (
+                    f"with_transitions/{transition_filename}"
+                )
                 enhanced_clip_info["path"] = str(transition_output_path)
                 enhanced_clip_info["has_transition"] = True
                 enhanced_clips.append(enhanced_clip_info)

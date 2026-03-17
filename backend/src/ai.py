@@ -42,6 +42,10 @@ class ViralityAnalysis(BaseModel):
         description="Type of hook: question, statement, statistic, story, contrast, or none",
     )
     virality_reasoning: str = Field(description="Explanation of the virality score")
+    bgm_mood: Literal["nonchalant", "dramatic", "hype", "meme", "motivation"] = Field(
+        default="nonchalant",
+        description="Background music mood that best matches the segment's content and emotional tone",
+    )
 
 
 class TranscriptSegment(BaseModel):
@@ -130,6 +134,14 @@ HOOK TYPES to identify:
 - "story": Starts with narrative/anecdote
 - "contrast": Before/after or problem/solution framing
 - "none": No clear hook pattern
+
+BGM MOOD SELECTION:
+For each segment, select the most appropriate background music mood based on the content and emotional tone:
+- "nonchalant": Chill, unbothered, POV content, casual storytelling, everyday moments
+- "dramatic": Intense reveals, emotional moments, plot twists, high-stakes storytelling
+- "hype": High energy, sports highlights, fast-paced edits, action content
+- "meme": Funny, chaotic, brainrot, comedy, relatable fails, reaction content
+- "motivation": Grind, self-improvement, success stories, gym, aspirational content
 
 B-ROLL OPPORTUNITIES:
 Identify 2-4 moments in each segment where B-roll footage could enhance the video:
