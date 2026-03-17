@@ -32,6 +32,9 @@ class ClipRepository:
         value_score: int = 0,
         shareability_score: int = 0,
         hook_type: Optional[str] = None,
+        youtube_title: Optional[str] = None,
+        title_alternatives: Optional[str] = None,
+        hashtags: Optional[str] = None,
     ) -> str:
         """Create a new clip record and return its ID."""
         try:
@@ -41,11 +44,13 @@ class ClipRepository:
                     (task_id, filename, file_path, start_time, end_time, duration,
                      text, relevance_score, reasoning, clip_order,
                      virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
+                     youtube_title, title_alternatives, hashtags,
                      created_at)
                     VALUES
                     (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
                      :text, :relevance_score, :reasoning, :clip_order,
                      :virality_score, :hook_score, :engagement_score, :value_score, :shareability_score, :hook_type,
+                     :youtube_title, :title_alternatives, :hashtags,
                      NOW())
                     RETURNING id
                 """),
@@ -66,6 +71,9 @@ class ClipRepository:
                     "value_score": value_score,
                     "shareability_score": shareability_score,
                     "hook_type": hook_type,
+                    "youtube_title": youtube_title,
+                    "title_alternatives": title_alternatives,
+                    "hashtags": hashtags,
                 },
             )
         except Exception:
@@ -107,7 +115,8 @@ class ClipRepository:
                 sa_text("""
                     SELECT id, filename, file_path, start_time, end_time, duration,
                            text, relevance_score, reasoning, clip_order, created_at,
-                           virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type
+                           virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
+                           youtube_title, title_alternatives, hashtags
                     FROM generated_clips
                     WHERE task_id = :task_id
                     ORDER BY clip_order ASC
@@ -129,28 +138,30 @@ class ClipRepository:
 
         clips = []
         for row in result.fetchall():
-            clips.append(
-                {
-                    "id": row.id,
-                    "filename": row.filename,
-                    "file_path": row.file_path,
-                    "start_time": row.start_time,
-                    "end_time": row.end_time,
-                    "duration": row.duration,
-                    "text": row.text,
-                    "relevance_score": row.relevance_score,
-                    "reasoning": row.reasoning,
-                    "clip_order": row.clip_order,
-                    "created_at": row.created_at.isoformat(),
-                    "video_url": f"/clips/{row.filename}",
-                    "virality_score": row.virality_score or 0,
-                    "hook_score": row.hook_score or 0,
-                    "engagement_score": row.engagement_score or 0,
-                    "value_score": row.value_score or 0,
-                    "shareability_score": row.shareability_score or 0,
-                    "hook_type": row.hook_type,
-                }
-            )
+            clip_dict = {
+                "id": row.id,
+                "filename": row.filename,
+                "file_path": row.file_path,
+                "start_time": row.start_time,
+                "end_time": row.end_time,
+                "duration": row.duration,
+                "text": row.text,
+                "relevance_score": row.relevance_score,
+                "reasoning": row.reasoning,
+                "clip_order": row.clip_order,
+                "created_at": row.created_at.isoformat(),
+                "video_url": f"/clips/{row.filename}",
+                "virality_score": getattr(row, "virality_score", None) or 0,
+                "hook_score": getattr(row, "hook_score", None) or 0,
+                "engagement_score": getattr(row, "engagement_score", None) or 0,
+                "value_score": getattr(row, "value_score", None) or 0,
+                "shareability_score": getattr(row, "shareability_score", None) or 0,
+                "hook_type": getattr(row, "hook_type", None),
+                "youtube_title": getattr(row, "youtube_title", None),
+                "title_alternatives": getattr(row, "title_alternatives", None),
+                "hashtags": getattr(row, "hashtags", None),
+            }
+            clips.append(clip_dict)
 
         return clips
 
@@ -199,6 +210,7 @@ class ClipRepository:
                     SELECT id, task_id, filename, file_path, start_time, end_time, duration,
                            text, relevance_score, reasoning, clip_order,
                            virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
+                           youtube_title, title_alternatives, hashtags,
                            created_at
                     FROM generated_clips
                     WHERE id = :clip_id
@@ -235,12 +247,15 @@ class ClipRepository:
             "relevance_score": row.relevance_score,
             "reasoning": row.reasoning,
             "clip_order": row.clip_order,
-            "virality_score": row.virality_score or 0,
-            "hook_score": row.hook_score or 0,
-            "engagement_score": row.engagement_score or 0,
-            "value_score": row.value_score or 0,
-            "shareability_score": row.shareability_score or 0,
-            "hook_type": row.hook_type,
+            "virality_score": getattr(row, "virality_score", None) or 0,
+            "hook_score": getattr(row, "hook_score", None) or 0,
+            "engagement_score": getattr(row, "engagement_score", None) or 0,
+            "value_score": getattr(row, "value_score", None) or 0,
+            "shareability_score": getattr(row, "shareability_score", None) or 0,
+            "hook_type": getattr(row, "hook_type", None),
+            "youtube_title": getattr(row, "youtube_title", None),
+            "title_alternatives": getattr(row, "title_alternatives", None),
+            "hashtags": getattr(row, "hashtags", None),
             "created_at": row.created_at.isoformat(),
             "video_url": f"/clips/{row.filename}",
         }

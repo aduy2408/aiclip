@@ -4,8 +4,14 @@ Video service - handles video processing business logic.
 
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable, Awaitable
+import asyncio
 import logging
 import json
+import os
+import re
+import unicodedata
+
+from pydantic_ai import Agent
 
 from ..utils.async_helpers import run_in_thread
 from ..youtube_utils import (
@@ -14,12 +20,59 @@ from ..youtube_utils import (
     get_youtube_video_id,
 )
 from ..video_utils import get_video_transcript, create_clips_with_transitions
-from ..ai import get_most_relevant_parts_by_transcript
+from ..ai import get_most_relevant_parts_by_transcript, _get_missing_llm_key_error
 from ..config import Config
 
 logger = logging.getLogger(__name__)
 config = Config()
 UPLOAD_URL_PREFIX = "upload://"
+
+# Title generation prompt template
+_TITLE_PROMPT_TEMPLATE = """You are a viral YouTube Shorts title expert.
+Transcript: "{text}"
+
+Return ONLY raw JSON, no markdown, no explanation:
+{{
+  "title": "max 60 chars, lowercase, curiosity gap, no cringe words",
+  "alternatives": ["option 2", "option 3"],
+  "hashtags": ["#shorts", "#fyp", "3 more relevant tags"]
+}}
+
+Rules: lowercase, max 60 chars, front-load the hook, 1 emoji max at end.
+Never use: amazing/incredible/life-changing/game-changer.
+Use formats like:
+- "pov: you [relatable moment]"
+- "nobody talks about [truth]"
+- "this is why you're [problem] 💀"
+- "stop [behavior] if you want [outcome]"
+- "i wish someone told me this sooner"
+"""
+
+
+def _sanitize_title_for_filename(title: str) -> str:
+    """Sanitize a viral title into a safe filename (without extension).
+
+    Rules:
+    - Lowercase
+    - Remove emojis and non-ASCII
+    - Keep only alphanumeric, spaces, hyphens
+    - Replace spaces with underscores
+    - Strip leading/trailing underscores
+    - Max 80 chars
+    """
+    # Normalize unicode and remove non-ASCII (including emojis)
+    title = unicodedata.normalize("NFKD", title)
+    title = title.encode("ascii", "ignore").decode("ascii")
+    title = title.lower()
+    # Keep only alphanumeric, spaces, hyphens
+    title = re.sub(r"[^a-z0-9 \-]", "", title)
+    # Collapse multiple spaces/hyphens
+    title = re.sub(r"[\s]+", " ", title).strip()
+    sanitized = title.strip()
+
+    # Truncate to 80 chars
+    sanitized = sanitized[:80].strip()
+    return sanitized
 
 
 class VideoService:
@@ -127,6 +180,102 @@ class VideoService:
         )
 
         logger.info(f"Successfully created {len(clips_info)} clips")
+        return clips_info
+
+    @staticmethod
+    async def generate_clip_title(clip_text: str) -> Dict[str, Any]:
+        """Generate a viral title for a single clip using LLM.
+
+        Returns dict with keys: title, alternatives, hashtags.
+        On any failure returns a fallback based on the first 8 words of the transcript.
+        """
+        fallback_title = " ".join(clip_text.split()[:8]).strip()
+        if not fallback_title:
+            fallback_title = "untitled clip"
+
+        try:
+            prompt = _TITLE_PROMPT_TEMPLATE.format(text=clip_text[:500])
+
+            agent: Agent[None, str] = Agent(
+                model=config.llm,
+                output_type=str,
+                system_prompt="You are a viral YouTube Shorts title expert. Return ONLY raw JSON.",
+            )
+            result = await agent.run(prompt)
+            raw = result.output.strip()
+
+            # Strip markdown fences if the model wraps them
+            if raw.startswith("```"):
+                raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                raw = re.sub(r"\s*```$", "", raw)
+
+            parsed = json.loads(raw)
+            title = parsed.get("title", fallback_title)
+            alternatives = parsed.get("alternatives", [])
+            hashtags = parsed.get("hashtags", ["#shorts", "#fyp"])
+
+            # Enforce max 60 chars on title
+            if len(title) > 60:
+                title = title[:57] + "..."
+
+            return {
+                "title": title,
+                "alternatives": alternatives,
+                "hashtags": hashtags,
+            }
+        except Exception as e:
+            logger.warning(f"Title generation failed, using fallback: {e}")
+            return {
+                "title": fallback_title,
+                "alternatives": [],
+                "hashtags": ["#shorts", "#fyp"],
+            }
+
+    @staticmethod
+    async def generate_titles_for_clips(
+        clips_info: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Generate viral titles for all clips in parallel via asyncio.gather().
+
+        Mutates each clip_info dict in-place by adding youtube_title,
+        title_alternatives, and hashtags keys.  Also renames the physical
+        mp4 file to the sanitized title.
+
+        Never raises -- all errors are caught per-clip.
+        """
+
+        async def _process_one(clip_info: Dict[str, Any]) -> None:
+            clip_text = clip_info.get("text", "")
+            title_data = await VideoService.generate_clip_title(clip_text)
+
+            clip_info["youtube_title"] = title_data["title"]
+            clip_info["title_alternatives"] = json.dumps(title_data["alternatives"])
+            clip_info["hashtags"] = json.dumps(title_data["hashtags"])
+
+            # Rename the physical file to the sanitized title
+            try:
+                old_path = Path(clip_info["path"])
+                if old_path.exists():
+                    sanitized = _sanitize_title_for_filename(title_data["title"])
+                    if sanitized:
+                        new_filename = f"{sanitized}.mp4"
+                        new_path = old_path.parent / new_filename
+                        # Avoid collisions -- append clip_id if file already exists
+                        if new_path.exists() and new_path != old_path:
+                            stem = sanitized[:70]
+                            new_filename = f"{stem}_{clip_info.get('clip_id', 'x')}.mp4"
+                            new_path = old_path.parent / new_filename
+                        os.rename(str(old_path), str(new_path))
+                        clip_info["filename"] = new_filename
+                        clip_info["path"] = str(new_path)
+                        logger.info(
+                            f"Renamed clip file: {old_path.name} -> {new_filename}"
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to rename clip file, keeping original: {e}")
+
+        tasks = [_process_one(clip) for clip in clips_info]
+        await asyncio.gather(*tasks, return_exceptions=True)
         return clips_info
 
     @staticmethod
@@ -268,6 +417,14 @@ class VideoService:
                 output_format,
                 add_subtitles,
             )
+
+            # Step 5: Generate viral titles for clips (parallel LLM calls)
+            try:
+                logger.info("Generating viral titles for clips")
+                clips_info = await VideoService.generate_titles_for_clips(clips_info)
+                logger.info("Viral title generation complete")
+            except Exception as e:
+                logger.warning(f"Title generation step failed (non-fatal): {e}")
 
             if progress_callback:
                 await progress_callback(90, "Finalizing clips...", "processing")
