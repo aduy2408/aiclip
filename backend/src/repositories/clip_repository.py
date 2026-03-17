@@ -270,6 +270,9 @@ class ClipRepository:
         end_time: str,
         duration: float,
         text: str,
+        youtube_title: str | None = None,
+        title_alternatives: str | None = None,
+        hashtags: str | None = None,
     ) -> None:
         """Update core clip metadata and file path."""
         await db.execute(
@@ -282,6 +285,9 @@ class ClipRepository:
                     end_time = :end_time,
                     duration = :duration,
                     text = :text,
+                    youtube_title = COALESCE(:youtube_title, youtube_title),
+                    title_alternatives = COALESCE(:title_alternatives, title_alternatives),
+                    hashtags = COALESCE(:hashtags, hashtags),
                     updated_at = NOW()
                 WHERE id = :clip_id
                 """
@@ -294,6 +300,9 @@ class ClipRepository:
                 "end_time": end_time,
                 "duration": duration,
                 "text": text,
+                "youtube_title": youtube_title,
+                "title_alternatives": title_alternatives,
+                "hashtags": hashtags,
             },
         )
         await db.commit()

@@ -43,6 +43,7 @@ import {
   Settings2,
   Type,
   Clapperboard,
+  Copy,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
@@ -69,6 +70,8 @@ interface Clip {
   shareability_score: number;
   hook_type: string | null;
   youtube_title?: string;
+  title_alternatives?: string;
+  hashtags?: string;
 }
 
 interface TaskDetails {
@@ -111,6 +114,7 @@ export default function TaskPage() {
   const [deletingClipId, setDeletingClipId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
+  const [isMerging, setIsMerging] = useState(false);
   const [editingClipId, setEditingClipId] = useState<string | null>(null);
   const [startOffset, setStartOffset] = useState("0");
   const [endOffset, setEndOffset] = useState("0");
@@ -464,19 +468,24 @@ export default function TaskPage() {
 
   const handleMergeClips = async () => {
     if (!session?.user?.id || !params.id || selectedClipIds.length < 2) return;
-    const response = await fetch(`${taskApiUrl}/${params.id}/clips/merge`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ clip_ids: selectedClipIds }),
-    });
-    if (!response.ok) {
-      alert(await buildSupportError(response, "Failed to merge clips"));
-      return;
+    setIsMerging(true);
+    try {
+      const response = await fetch(`${taskApiUrl}/${params.id}/clips/merge`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ clip_ids: selectedClipIds }),
+      });
+      if (!response.ok) {
+        alert(await buildSupportError(response, "Failed to merge clips"));
+        return;
+      }
+      setSelectedClipIds([]);
+      await fetchTaskStatus();
+    } finally {
+      setIsMerging(false);
     }
-    setSelectedClipIds([]);
-    await fetchTaskStatus();
   };
 
   const handleUpdateCaptions = async (clipId: string) => {
@@ -917,9 +926,9 @@ export default function TaskPage() {
 
             {selectedClipIds.length >= 2 && (
               <div className="flex justify-end">
-                <Button variant="outline" onClick={handleMergeClips}>
-                  <GitMerge className="w-4 h-4" />
-                  Merge Selected ({selectedClipIds.length})
+                <Button variant="outline" onClick={handleMergeClips} disabled={isMerging}>
+                  <GitMerge className="w-4 h-4 mr-2" />
+                  {isMerging ? `Merging (${selectedClipIds.length})...` : `Merge Selected (${selectedClipIds.length})`}
                 </Button>
               </div>
             )}
@@ -984,19 +993,102 @@ export default function TaskPage() {
                             <span>•</span>
                             <span>{formatDuration(clip.duration)}</span>
                           </div>
+
+                          {/* Alternative Titles */}
+                          {clip.title_alternatives && (() => {
+                            try {
+                              const parsed = JSON.parse(clip.title_alternatives);
+                              if (!Array.isArray(parsed) || parsed.length === 0) return null;
+                              return (
+                                <div className="mt-3 mb-2">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Alternative Titles</p>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5 hover:bg-transparent text-gray-400 hover:text-gray-700"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        navigator.clipboard.writeText(parsed.join('\n'));
+                                      }}
+                                      title="Copy all titles"
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                    {parsed.map((alt: string, idx: number) => (
+                                      <p key={idx} className="text-sm text-gray-700 italic border-l-2 border-gray-200 pl-2 group relative">
+                                        "{alt}"
+                                        <button 
+                                          onClick={(e) => { 
+                                            e.preventDefault(); 
+                                            e.stopPropagation(); 
+                                            navigator.clipboard.writeText(alt); 
+                                          }} 
+                                          className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-gray-700 transition-opacity"
+                                          title="Copy this title"
+                                        >
+                                          <Copy className="h-3 w-3" />
+                                        </button>
+                                      </p>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            } catch (e) { return null; }
+                          })()}
+
+                          {/* Hashtags */}
+                          {clip.hashtags && (() => {
+                            try {
+                              const parsed = JSON.parse(clip.hashtags);
+                              if (!Array.isArray(parsed) || parsed.length === 0) return null;
+                              return (
+                                <div className="mt-2 mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap gap-1">
+                                      {parsed.map((tag: string, idx: number) => (
+                                        <span key={idx} className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                                          {tag.startsWith('#') ? tag : `#${tag}`}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5 text-gray-400 hover:text-blue-600 hover:bg-transparent"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        const tagsString = parsed.map((t: string) => t.startsWith('#') ? t : `#${t}`).join(' ');
+                                        navigator.clipboard.writeText(tagsString);
+                                      }}
+                                      title="Copy all hashtags"
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            } catch (e) { return null; }
+                          })()}
                         </div>
-                        <div className="flex items-center gap-2">
-                          {/* Virality Score Badge */}
-                          {clip.virality_score > 0 && (
-                            <Badge className={`${getViralityBgColor(clip.virality_score)} text-white`}>
-                              <Zap className="w-3 h-3 mr-1" />
-                              {clip.virality_score}
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center gap-2">
+                            {/* Virality Score Badge */}
+                            {clip.virality_score > 0 && (
+                              <Badge className={`${getViralityBgColor(clip.virality_score)} text-white`}>
+                                <Zap className="w-3 h-3 mr-1" />
+                                {clip.virality_score}
+                              </Badge>
+                            )}
+                            <Badge className={getScoreColor(clip.relevance_score)}>
+                              <Star className="w-3 h-3 mr-1" />
+                              {(clip.relevance_score * 100).toFixed(0)}%
                             </Badge>
-                          )}
-                          <Badge className={getScoreColor(clip.relevance_score)}>
-                            <Star className="w-3 h-3 mr-1" />
-                            {(clip.relevance_score * 100).toFixed(0)}%
-                          </Badge>
+                          </div>
                         </div>
                       </div>
 
