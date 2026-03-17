@@ -633,15 +633,30 @@ class TaskService:
         text = " ".join((c.get("text") or "").strip() for c in ordered if c.get("text"))
 
         first = ordered[0]
+        
+        # Prepare info for title generation and file renaming
+        merged_clip_info = {
+            "clip_id": first["id"],
+            "text": text,
+            "path": str(merged_path),
+            "filename": merged_path.name
+        }
+
+        # Generate viral metadata and rename physical file
+        await self.video_service.generate_titles_for_clips([merged_clip_info])
+
         await self.clip_repo.update_clip(
             self.db,
             first["id"],
-            merged_path.name,
-            str(merged_path),
+            merged_clip_info["filename"],
+            merged_clip_info["path"],
             start_time,
             end_time,
             duration,
             text,
+            youtube_title=merged_clip_info.get("youtube_title"),
+            title_alternatives=merged_clip_info.get("title_alternatives"),
+            hashtags=merged_clip_info.get("hashtags"),
         )
 
         for clip in ordered[1:]:

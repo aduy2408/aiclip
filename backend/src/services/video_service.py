@@ -53,15 +53,15 @@ PSYCHOLOGICAL TRIGGERS (pick the strongest one):
 - Social proof: "why everyone is switching to..."
 
 TRENDING FORMATS (2025 brainrot shorts):
-- "bro really said [quote] 💀"
-- "the way [person] [action] no cap"
+- "Bro really said [quote] 💀"
+- "The way [person] [action] no cap"
 - "POV: [extremely relatable situation]"
-- "they actually [surprising action] fr"
-- "why does [common thing] hit different"
-- "this [thing] is actually [unexpected truth]"
-- "nobody: / absolutely nobody: / [subject]: [unexpected action]"
-- "i can't believe [subject] actually [action]"
-- "the [item/person] said [quote] and walked away"
+- "They actually [surprising action] fr"
+- "Why does [common thing] hit different"
+- "This [thing] is actually [unexpected truth]"
+- "Nobody: / Absolutely nobody: / [subject]: [unexpected action]"
+- "I can't believe [subject] actually [action]"
+- "The [item/person] said [quote] and walked away"
 - "[number] seconds that changed everything"
 """
 
